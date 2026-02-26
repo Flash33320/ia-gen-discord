@@ -3,13 +3,29 @@
 Panel React pour générer un modèle de serveur Discord avec une IA:
 
 - L'utilisateur décrit son besoin.
-- L'IA génère un aperçu du modèle (catégories, salons, rôles, permissions).
+- Un backend Node appelle l'API OpenAI pour générer une vraie structure JSON.
+- Le front affiche le résultat (catégories, salons, rôles, permissions).
 - L'utilisateur invite le bot.
 - L'utilisateur applique le modèle sur son serveur.
 
-## Lancer en local
+## Variables d'environnement
 
 ```bash
-npm install
+export OPENAI_API_KEY="sk-..."
+# optionnel
+export OPENAI_MODEL="gpt-4o-mini"
+```
+
+## Lancer en local
+
+Terminal 1 (API):
+
+```bash
+npm run dev:api
+```
+
+Terminal 2 (front):
+
+```bash
 npm run dev
 ```

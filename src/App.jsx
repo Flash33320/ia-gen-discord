@@ -1,114 +1,53 @@
 import { useMemo, useState } from "react";
 
-const BASE_PERMISSIONS = {
-  Fondateur: ["Tous les accès", "Gestion des intégrations", "Logs complets"],
-  Administrateur: ["Gestion du serveur", "Gestion des rôles", "Gestion des salons"],
-  Modérateur: ["Gestion des messages", "Kick/Ban", "Gestion des tickets"],
-  "VIP Client": ["Accès salons premium", "Priorité tickets"],
-  "Client Vérifié": ["Accès achat", "Accès support"],
-  Membre: ["Lire", "Écrire", "Rejoindre vocal"]
-};
-
-function buildTemplate(description) {
-  const text = description.toLowerCase();
-
-  const hasGaming = /jeu|gaming|esport/.test(text);
-  const hasCrypto = /crypto|web3|nft/.test(text);
-  const hasBusiness = /business|startup|pro|saas/.test(text);
-
-  const categories = [
-    {
-      name: "📢 Informations",
-      channels: ["📜 #règlement", "📣 #annonces", "🗓 #événements", "🧾 #changelog"]
-    },
-    {
-      name: "🛍 Boutique",
-      channels: ["💸 #prix", "🧺 #commandes", "⭐ #avis-clients", "🫶 #témoignages"]
-    },
-    {
-      name: "💬 Communauté",
-      channels: ["💬 #général", "🗨️ #discussion", "🔊 vocal-public"]
-    }
-  ];
-
-  if (hasGaming) {
-    categories.push({
-      name: "🎮 Gaming",
-      channels: ["🧑‍🤝‍🧑 #recherche-team", "🎬 #clips", "🔊 vocal-squad"]
-    });
-  }
-
-  if (hasCrypto) {
-    categories.push({
-      name: "🪙 Crypto",
-      channels: ["📈 #actu-marché", "🧠 #alpha", "👛 #wallet-help"]
-    });
-  }
-
-  if (hasBusiness) {
-    categories.push({
-      name: "📈 Business",
-      channels: ["🤝 #networking", "📚 #ressources", "🔊 coworking"]
-    });
-  }
-
-  categories.push({
-    name: "🛠 Staff",
-    channels: ["📂 #logs", "🎫 #tickets", "🔊 réunion-staff"]
-  });
-
-  const roles = Object.entries(BASE_PERMISSIONS).map(([name, permissions], index) => ({
-    name,
-    permissions,
-    level: index + 1
-  }));
-
-  if (hasGaming) {
-    roles.push({
-      name: "Coach",
-      permissions: ["Accès salon coaching", "Ping événements"],
-      level: roles.length + 1
-    });
-  }
-
-  if (hasCrypto) {
-    roles.push({
-      name: "Analyste",
-      permissions: ["Publier analyses", "Tag alertes marché"],
-      level: roles.length + 1
-    });
-  }
-
-  return {
-    serverName: `Template IA · ${description.slice(0, 32) || "Mon serveur"}`,
-    categories,
-    roles,
-    deploySummary:
-      "Ce modèle remplacera les catégories, salons, rôles et permissions existants sur ton serveur."
-  };
-}
-
 export default function App() {
   const [description, setDescription] = useState("");
   const [stylePrompt, setStylePrompt] = useState("");
   const [template, setTemplate] = useState(null);
   const [botInvited, setBotInvited] = useState(false);
   const [deploymentState, setDeploymentState] = useState("idle");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState("");
 
-  const canGenerate = description.trim().length > 15;
+  const canGenerate = description.trim().length > 15 && !isGenerating;
   const deployDisabled = !template || !botInvited || deploymentState === "sending";
 
   const progressText = useMemo(() => {
+    if (isGenerating) return "Génération IA en cours...";
     if (!template) return "Étape 1/3 · Décris ton serveur dans la zone ci-dessous";
     if (!botInvited) return "Étape 2/3 · Invite le bot Discord";
     if (deploymentState === "done") return "Étape 3/3 · Modèle envoyé avec succès";
     return "Étape 3/3 · Envoi du modèle sur ton serveur";
-  }, [template, botInvited, deploymentState]);
+  }, [template, botInvited, deploymentState, isGenerating]);
 
-  const generate = () => {
-    setTemplate(buildTemplate(description.trim()));
-    setBotInvited(false);
+  const generate = async () => {
+    setIsGenerating(true);
+    setError("");
     setDeploymentState("idle");
+    setBotInvited(false);
+
+    try {
+      const response = await fetch("http://localhost:8787/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: description.trim(),
+          stylePrompt: stylePrompt.trim()
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Erreur inconnue");
+      }
+
+      setTemplate(payload.template);
+    } catch (apiError) {
+      setTemplate(null);
+      setError(apiError.message || "La génération a échoué.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const deployTemplate = () => {
@@ -122,7 +61,7 @@ export default function App() {
     <main className="container">
       <header className="topbar">
         <h1>Générateur de serveur Discord IA</h1>
-        <p>Interface structurée: structure à gauche, rôles à droite, et zone dédiée pour ton explication.</p>
+        <p>La structure est générée par une IA côté backend via API, puis affichée ici.</p>
       </header>
 
       <section className="card prompt-card">
@@ -131,15 +70,29 @@ export default function App() {
         <textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          placeholder="Ex: serveur cheat de jeux avec annonces/prix, salon vocal, tickets, logs, rôles staff et VIP..."
+          placeholder="Ex: serveur gaming premium avec onboarding, tickets support, salon annonces, rôles staff/VIP..."
           rows={4}
         />
+
+        <h3>Consignes de style</h3>
+        <label htmlFor="stylePrompt" className="hint">
+          Optionnel: style visuel, ambiance, nomenclature des salons, etc.
+        </label>
+        <textarea
+          id="stylePrompt"
+          rows={3}
+          value={stylePrompt}
+          onChange={(event) => setStylePrompt(event.target.value)}
+          placeholder="Ex: style moderne, noms courts, plus de salons communautaires..."
+        />
+
         <div className="row">
           <button type="button" onClick={generate} disabled={!canGenerate}>
-            Générer la structure
+            {isGenerating ? "Génération..." : "Générer la structure"}
           </button>
           <span className="hint">{progressText}</span>
         </div>
+        {error && <p className="warning">⚠️ {error}</p>}
       </section>
 
       {template && (
@@ -172,18 +125,6 @@ export default function App() {
                 </article>
               ))}
             </div>
-
-            <h3>Options de style</h3>
-            <label htmlFor="stylePrompt" className="hint">
-              Zone de modifications (où ajouter tes consignes de rendu)
-            </label>
-            <textarea
-              id="stylePrompt"
-              rows={4}
-              value={stylePrompt}
-              onChange={(event) => setStylePrompt(event.target.value)}
-              placeholder="Décris ici les ajustements visuels ou organisationnels à appliquer..."
-            />
 
             <p className="warning">⚠️ {template.deploySummary}</p>
 
