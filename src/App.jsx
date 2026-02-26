@@ -38,7 +38,8 @@ export default function App() {
 
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error || "Erreur inconnue");
+        const message = payload.details ? `${payload.error}: ${payload.details}` : payload.error;
+        throw new Error(message || "Erreur inconnue");
       }
 
       setTemplate(payload.template);
