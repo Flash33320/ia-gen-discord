@@ -10,10 +10,26 @@ Panel React pour générer un modèle de serveur Discord avec une IA:
 
 ## Variables d'environnement
 
+1) Copie le modèle:
+
 ```bash
-export OPENAI_API_KEY="sk-..."
-# optionnel
-export OPENAI_MODEL="gpt-4o-mini"
+cp .env.example .env
+```
+
+2) Ouvre `.env` et colle ta clé:
+
+```dotenv
+OPENAI_API_KEY=sk-...
+```
+
+3) (Optionnel) ajuste le modèle et le port.
+
+Le serveur charge automatiquement le fichier `.env` au démarrage.
+
+```bash
+OPENAI_API_KEY="sk-..."
+OPENAI_MODEL="gpt-4o-mini"
+PORT=8787
 ```
 
 ## Lancer en local
