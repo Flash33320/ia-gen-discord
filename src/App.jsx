@@ -19,42 +19,42 @@ function buildTemplate(description) {
   const categories = [
     {
       name: "📢 Informations",
-      channels: ["#règlement", "#annonces", "#événements", "#changelog"]
+      channels: ["📜 #règlement", "📣 #annonces", "🗓 #événements", "🧾 #changelog"]
     },
     {
       name: "🛍 Boutique",
-      channels: ["#prix", "#commandes", "#avis-clients", "#témoignages"]
+      channels: ["💸 #prix", "🧺 #commandes", "⭐ #avis-clients", "🫶 #témoignages"]
     },
     {
       name: "💬 Communauté",
-      channels: ["#général", "#discussion", "🔊 vocal-public"]
+      channels: ["💬 #général", "🗨️ #discussion", "🔊 vocal-public"]
     }
   ];
 
   if (hasGaming) {
     categories.push({
       name: "🎮 Gaming",
-      channels: ["#recherche-team", "#clips", "🔊 vocal-squad"]
+      channels: ["🧑‍🤝‍🧑 #recherche-team", "🎬 #clips", "🔊 vocal-squad"]
     });
   }
 
   if (hasCrypto) {
     categories.push({
       name: "🪙 Crypto",
-      channels: ["#actu-marché", "#alpha", "#wallet-help"]
+      channels: ["📈 #actu-marché", "🧠 #alpha", "👛 #wallet-help"]
     });
   }
 
   if (hasBusiness) {
     categories.push({
       name: "📈 Business",
-      channels: ["#networking", "#ressources", "🔊 coworking"]
+      channels: ["🤝 #networking", "📚 #ressources", "🔊 coworking"]
     });
   }
 
   categories.push({
     name: "🛠 Staff",
-    channels: ["#logs", "#tickets", "🔊 réunion-staff"]
+    channels: ["📂 #logs", "🎫 #tickets", "🔊 réunion-staff"]
   });
 
   const roles = Object.entries(BASE_PERMISSIONS).map(([name, permissions], index) => ({
