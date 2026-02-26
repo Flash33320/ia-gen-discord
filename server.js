@@ -48,6 +48,67 @@ function cleanJson(text) {
   return text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
 }
 
+function parseOpenAiError(details) {
+  if (!details) return "Réponse vide de l'API OpenAI.";
+
+  try {
+    const parsed = JSON.parse(details);
+    return parsed?.error?.message || details;
+  } catch {
+    return details;
+  }
+}
+
+function shouldRetryWithoutResponseFormat(details) {
+  const normalized = (details || "").toLowerCase();
+  return normalized.includes("response_format") || normalized.includes("json_object");
+}
+
+async function callOpenAi(messages) {
+  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const requestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    }
+  };
+
+  const firstBody = {
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    temperature: 0.5,
+    response_format: { type: "json_object" },
+    messages
+  };
+
+  let response = await fetch(`${baseUrl}/chat/completions`, {
+    ...requestInit,
+    body: JSON.stringify(firstBody)
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    if (response.status === 400 && shouldRetryWithoutResponseFormat(details)) {
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        ...requestInit,
+        body: JSON.stringify({
+          ...firstBody,
+          response_format: undefined
+        })
+      });
+
+      if (response.ok) return response.json();
+
+      const retryDetails = await response.text();
+      throw new Error(parseOpenAiError(retryDetails));
+    }
+
+    throw new Error(parseOpenAiError(details));
+  }
+
+  return response.json();
+}
+
 function buildPrompt(description, stylePrompt) {
   return `Tu es un expert Discord. Génère UNIQUEMENT du JSON valide (sans markdown) selon ce schéma:\n\n{\n  "serverName": "string",\n  "categories": [{"name": "string", "channels": ["string"]}],\n  "roles": [{"name": "string", "permissions": ["string"], "level": number}],\n  "deploySummary": "string"\n}\n\nContraintes:\n- Les noms de salons texte doivent commencer par #.\n- Les salons vocaux ne doivent pas commencer par #.\n- Donne entre 4 et 8 catégories pertinentes.\n- Donne entre 6 et 12 rôles triés par niveau croissant (1 = plus haut privilège).\n- Permissions courtes et concrètes.\n- Réponds en français.\n\nDescription utilisateur:\n${description}\n\nConsignes de style supplémentaires:\n${stylePrompt || "Aucune"}`;
 }
@@ -82,29 +143,10 @@ async function handleGenerate(req, res) {
     }
 
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-          temperature: 0.5,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: "Tu produis strictement du JSON valide conforme à la demande." },
-            { role: "user", content: buildPrompt(description, stylePrompt) }
-          ]
-        })
-      });
-
-      if (!response.ok) {
-        const details = await response.text();
-        return sendJson(res, 502, { error: "Erreur API OpenAI", details });
-      }
-
-      const payload = await response.json();
+      const payload = await callOpenAi([
+        { role: "system", content: "Tu produis strictement du JSON valide conforme à la demande." },
+        { role: "user", content: buildPrompt(description, stylePrompt) }
+      ]);
       const rawContent = payload?.choices?.[0]?.message?.content;
       if (!rawContent) return sendJson(res, 502, { error: "Réponse IA vide." });
 
@@ -115,7 +157,11 @@ async function handleGenerate(req, res) {
 
       return sendJson(res, 200, { template });
     } catch (error) {
-      return sendJson(res, 500, { error: "Erreur serveur", details: error.message });
+      if (error instanceof Error && error.message) {
+        return sendJson(res, 502, { error: "Erreur API OpenAI", details: error.message });
+      }
+
+      return sendJson(res, 500, { error: "Erreur serveur", details: "Erreur inconnue." });
     }
   });
 }
