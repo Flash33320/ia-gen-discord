@@ -59,6 +59,33 @@ function parseOpenAiError(details) {
   }
 }
 
+function mapOpenAiError(error) {
+  const message = error instanceof Error ? error.message : "Erreur inconnue.";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("exceeded your current quota") || normalized.includes("insufficient_quota")) {
+    return {
+      status: 429,
+      error: "Quota OpenAI dépassé",
+      details: "Le quota API est épuisé. Vérifie ton plan et ta facturation OpenAI avant de réessayer."
+    };
+  }
+
+  if (normalized.includes("invalid_api_key") || normalized.includes("incorrect api key")) {
+    return {
+      status: 401,
+      error: "Clé API OpenAI invalide",
+      details: "La clé OPENAI_API_KEY n'est pas valide. Mets à jour la clé côté serveur."
+    };
+  }
+
+  return {
+    status: 502,
+    error: "Erreur API OpenAI",
+    details: message
+  };
+}
+
 function shouldRetryWithoutResponseFormat(details) {
   const normalized = (details || "").toLowerCase();
   return normalized.includes("response_format") || normalized.includes("json_object");
@@ -158,7 +185,11 @@ async function handleGenerate(req, res) {
       return sendJson(res, 200, { template });
     } catch (error) {
       if (error instanceof Error && error.message) {
-        return sendJson(res, 502, { error: "Erreur API OpenAI", details: error.message });
+        const mappedError = mapOpenAiError(error);
+        return sendJson(res, mappedError.status, {
+          error: mappedError.error,
+          details: mappedError.details
+        });
       }
 
       return sendJson(res, 500, { error: "Erreur serveur", details: "Erreur inconnue." });
