@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 
 const BASE_PERMISSIONS = {
-  Admin: ["Gérer le serveur", "Gérer les rôles", "Voir les logs"],
-  Modérateur: ["Gérer les messages", "Kick/Ban", "Slowmode"],
-  Membre: ["Lire", "Écrire", "Rejoindre vocal"],
-  Invité: ["Lire uniquement #accueil"]
+  Fondateur: ["Tous les accès", "Gestion des intégrations", "Logs complets"],
+  Administrateur: ["Gestion du serveur", "Gestion des rôles", "Gestion des salons"],
+  Modérateur: ["Gestion des messages", "Kick/Ban", "Gestion des tickets"],
+  "VIP Client": ["Accès salons premium", "Priorité tickets"],
+  "Client Vérifié": ["Accès achat", "Accès support"],
+  Membre: ["Lire", "Écrire", "Rejoindre vocal"]
 };
 
 function buildTemplate(description) {
@@ -16,19 +18,23 @@ function buildTemplate(description) {
 
   const categories = [
     {
-      name: "🛬 Onboarding",
-      channels: ["#accueil", "#règlement", "#présentations"]
+      name: "📢 Informations",
+      channels: ["#règlement", "#annonces", "#événements", "#changelog"]
+    },
+    {
+      name: "🛍 Boutique",
+      channels: ["#prix", "#commandes", "#avis-clients", "#témoignages"]
     },
     {
       name: "💬 Communauté",
-      channels: ["#général", "#entraide", "#suggestions"]
+      channels: ["#général", "#discussion", "🔊 vocal-public"]
     }
   ];
 
   if (hasGaming) {
     categories.push({
       name: "🎮 Gaming",
-      channels: ["#recherche-team", "#clips", "🔊 Vocal Squad"]
+      channels: ["#recherche-team", "#clips", "🔊 vocal-squad"]
     });
   }
 
@@ -42,36 +48,39 @@ function buildTemplate(description) {
   if (hasBusiness) {
     categories.push({
       name: "📈 Business",
-      channels: ["#networking", "#ressources", "🔊 Coworking"]
+      channels: ["#networking", "#ressources", "🔊 coworking"]
     });
   }
 
   categories.push({
-    name: "🛠️ Staff",
-    channels: ["#mod-log", "#tickets", "🔊 Réunion staff"]
+    name: "🛠 Staff",
+    channels: ["#logs", "#tickets", "🔊 réunion-staff"]
   });
 
-  const roles = Object.entries(BASE_PERMISSIONS).map(([name, permissions]) => ({
+  const roles = Object.entries(BASE_PERMISSIONS).map(([name, permissions], index) => ({
     name,
-    permissions
+    permissions,
+    level: index + 1
   }));
 
   if (hasGaming) {
     roles.push({
       name: "Coach",
-      permissions: ["Accès salon coaching", "Ping événements"]
+      permissions: ["Accès salon coaching", "Ping événements"],
+      level: roles.length + 1
     });
   }
 
   if (hasCrypto) {
     roles.push({
       name: "Analyste",
-      permissions: ["Publier analyses", "Tag alertes marché"]
+      permissions: ["Publier analyses", "Tag alertes marché"],
+      level: roles.length + 1
     });
   }
 
   return {
-    serverName: `Template IA · ${description.slice(0, 28) || "Mon serveur"}`,
+    serverName: `Template IA · ${description.slice(0, 32) || "Mon serveur"}`,
     categories,
     roles,
     deploySummary:
@@ -81,6 +90,7 @@ function buildTemplate(description) {
 
 export default function App() {
   const [description, setDescription] = useState("");
+  const [stylePrompt, setStylePrompt] = useState("");
   const [template, setTemplate] = useState(null);
   const [botInvited, setBotInvited] = useState(false);
   const [deploymentState, setDeploymentState] = useState("idle");
@@ -89,20 +99,16 @@ export default function App() {
   const deployDisabled = !template || !botInvited || deploymentState === "sending";
 
   const progressText = useMemo(() => {
-    if (!template) return "Étape 1/3: décris ton serveur idéal";
-    if (!botInvited) return "Étape 2/3: invite le bot Discord";
-    if (deploymentState === "done") return "Étape 3/3: modèle envoyé avec succès";
-    return "Étape 3/3: envoi du modèle sur ton serveur";
+    if (!template) return "Étape 1/3 · Décris ton serveur dans la zone ci-dessous";
+    if (!botInvited) return "Étape 2/3 · Invite le bot Discord";
+    if (deploymentState === "done") return "Étape 3/3 · Modèle envoyé avec succès";
+    return "Étape 3/3 · Envoi du modèle sur ton serveur";
   }, [template, botInvited, deploymentState]);
 
   const generate = () => {
     setTemplate(buildTemplate(description.trim()));
     setBotInvited(false);
     setDeploymentState("idle");
-  };
-
-  const inviteBot = () => {
-    setBotInvited(true);
   };
 
   const deployTemplate = () => {
@@ -114,79 +120,91 @@ export default function App() {
 
   return (
     <main className="container">
-      <header>
-        <h1>Panel IA · Générateur de serveur Discord</h1>
-        <p>
-          Explique ton concept, laisse l&apos;IA générer un modèle complet, puis envoie-le en 1 clic sur
-          ton serveur Discord.
-        </p>
+      <header className="topbar">
+        <h1>Générateur de serveur Discord IA</h1>
+        <p>Interface structurée: structure à gauche, rôles à droite, et zone dédiée pour ton explication.</p>
       </header>
 
-      <section className="card">
-        <h2>1) Décris ton serveur</h2>
+      <section className="card prompt-card">
+        <h2>Décris ton serveur (zone d&apos;explication)</h2>
+        <p className="hint">C&apos;est ici que tu décris le rendu souhaité: catégories, salons, style, tickets, etc.</p>
         <textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          placeholder="Ex: Je veux un serveur gaming FR avec matchmaking, coaching et espace staff privé..."
-          rows={5}
+          placeholder="Ex: serveur cheat de jeux avec annonces/prix, salon vocal, tickets, logs, rôles staff et VIP..."
+          rows={4}
         />
         <div className="row">
           <button type="button" onClick={generate} disabled={!canGenerate}>
-            Générer le modèle IA
+            Générer la structure
           </button>
           <span className="hint">{progressText}</span>
         </div>
       </section>
 
       {template && (
-        <section className="card">
-          <h2>2) Aperçu du modèle généré</h2>
-          <p className="server-name">{template.serverName}</p>
+        <section className="workspace">
+          <article className="card">
+            <h2>Structure du serveur</h2>
+            <p className="server-name">{template.serverName}</p>
+            {template.categories.map((category) => (
+              <article key={category.name} className="block">
+                <strong>{category.name}</strong>
+                <ul>
+                  {category.channels.map((channel) => (
+                    <li key={channel}>{channel}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </article>
 
-          <div className="grid">
-            <div>
-              <h3>Catégories & salons</h3>
-              {template.categories.map((category) => (
-                <article key={category.name} className="block">
-                  <strong>{category.name}</strong>
-                  <ul>
-                    {category.channels.map((channel) => (
-                      <li key={channel}>{channel}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-
-            <div>
-              <h3>Rôles & permissions</h3>
+          <article className="card right-panel">
+            <h2>Rôles ({template.roles.length})</h2>
+            <div className="roles-list">
               {template.roles.map((role) => (
-                <article key={role.name} className="block">
-                  <strong>@{role.name}</strong>
-                  <ul>
-                    {role.permissions.map((permission) => (
-                      <li key={permission}>{permission}</li>
-                    ))}
-                  </ul>
+                <article key={role.name} className="role-row">
+                  <div>
+                    <strong>{role.name}</strong>
+                    <p>{role.permissions.join(" · ")}</p>
+                  </div>
+                  <span className="badge">{role.level}</span>
                 </article>
               ))}
             </div>
-          </div>
 
-          <p className="warning">⚠️ {template.deploySummary}</p>
+            <h3>Options de style</h3>
+            <label htmlFor="stylePrompt" className="hint">
+              Zone de modifications (où ajouter tes consignes de rendu)
+            </label>
+            <textarea
+              id="stylePrompt"
+              rows={4}
+              value={stylePrompt}
+              onChange={(event) => setStylePrompt(event.target.value)}
+              placeholder="Décris ici les ajustements visuels ou organisationnels à appliquer..."
+            />
 
-          <div className="row">
-            <button type="button" className="secondary" onClick={inviteBot} disabled={botInvited}>
-              {botInvited ? "Bot invité ✅" : "Inviter le bot Discord"}
-            </button>
-            <button type="button" onClick={deployTemplate} disabled={deployDisabled}>
-              {deploymentState === "sending"
-                ? "Envoi en cours..."
-                : deploymentState === "done"
-                  ? "Modèle appliqué ✅"
-                  : "Envoyer le modèle sur mon serveur"}
-            </button>
-          </div>
+            <p className="warning">⚠️ {template.deploySummary}</p>
+
+            <div className="row">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setBotInvited(true)}
+                disabled={botInvited}
+              >
+                {botInvited ? "Bot invité ✅" : "Inviter le bot Discord"}
+              </button>
+              <button type="button" onClick={deployTemplate} disabled={deployDisabled}>
+                {deploymentState === "sending"
+                  ? "Envoi en cours..."
+                  : deploymentState === "done"
+                    ? "Modèle appliqué ✅"
+                    : "Envoyer le modèle"}
+              </button>
+            </div>
+          </article>
         </section>
       )}
     </main>
