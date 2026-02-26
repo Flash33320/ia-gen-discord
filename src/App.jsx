@@ -62,7 +62,7 @@ export default function App() {
     <main className="container">
       <header className="topbar">
         <h1>Générateur de serveur Discord IA</h1>
-        <p>La structure est générée par une IA côté backend via API, puis affichée ici.</p>
+        <p>La structure est générée côté backend avec Gemini, puis affichée ici.</p>
       </header>
 
       <section className="card prompt-card">

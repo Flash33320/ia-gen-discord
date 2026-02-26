@@ -48,8 +48,8 @@ function cleanJson(text) {
   return text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
 }
 
-function parseOpenAiError(details) {
-  if (!details) return "Réponse vide de l'API OpenAI.";
+function parseGeminiError(details) {
+  if (!details) return "Réponse vide de l'API Gemini.";
 
   try {
     const parsed = JSON.parse(details);
@@ -59,78 +59,57 @@ function parseOpenAiError(details) {
   }
 }
 
-function mapOpenAiError(error) {
+function mapGeminiError(error) {
   const message = error instanceof Error ? error.message : "Erreur inconnue.";
   const normalized = message.toLowerCase();
 
-  if (normalized.includes("exceeded your current quota") || normalized.includes("insufficient_quota")) {
+  if (normalized.includes("quota") || normalized.includes("resource_exhausted")) {
     return {
       status: 429,
-      error: "Quota OpenAI dépassé",
-      details: "Le quota API est épuisé. Vérifie ton plan et ta facturation OpenAI avant de réessayer."
+      error: "Quota Gemini dépassé",
+      details: "Le quota API Gemini est épuisé. Vérifie ton plan Google AI avant de réessayer."
     };
   }
 
-  if (normalized.includes("invalid_api_key") || normalized.includes("incorrect api key")) {
+  if (normalized.includes("api key") || normalized.includes("api_key_invalid")) {
     return {
       status: 401,
-      error: "Clé API OpenAI invalide",
-      details: "La clé OPENAI_API_KEY n'est pas valide. Mets à jour la clé côté serveur."
+      error: "Clé API Gemini invalide",
+      details: "La clé GEMINI_API_KEY n'est pas valide. Mets à jour la clé côté serveur."
     };
   }
 
   return {
     status: 502,
-    error: "Erreur API OpenAI",
+    error: "Erreur API Gemini",
     details: message
   };
 }
 
-function shouldRetryWithoutResponseFormat(details) {
-  const normalized = (details || "").toLowerCase();
-  return normalized.includes("response_format") || normalized.includes("json_object");
-}
+async function callGemini(prompt) {
+  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
-async function callOpenAi(messages) {
-  const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const requestInit = {
+  const response = await fetch(apiUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    }
-  };
-
-  const firstBody = {
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    temperature: 0.5,
-    response_format: { type: "json_object" },
-    messages
-  };
-
-  let response = await fetch(`${baseUrl}/chat/completions`, {
-    ...requestInit,
-    body: JSON.stringify(firstBody)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      generationConfig: {
+        temperature: 0.5,
+        responseMimeType: "application/json"
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }]
+        }
+      ]
+    })
   });
 
   if (!response.ok) {
     const details = await response.text();
-    if (response.status === 400 && shouldRetryWithoutResponseFormat(details)) {
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        ...requestInit,
-        body: JSON.stringify({
-          ...firstBody,
-          response_format: undefined
-        })
-      });
-
-      if (response.ok) return response.json();
-
-      const retryDetails = await response.text();
-      throw new Error(parseOpenAiError(retryDetails));
-    }
-
-    throw new Error(parseOpenAiError(details));
+    throw new Error(parseGeminiError(details));
   }
 
   return response.json();
@@ -165,16 +144,15 @@ async function handleGenerate(req, res) {
       return sendJson(res, 400, { error: "La description doit contenir au moins 15 caractères." });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return sendJson(res, 500, { error: "OPENAI_API_KEY manquante côté serveur." });
+    if (!process.env.GEMINI_API_KEY) {
+      return sendJson(res, 500, { error: "GEMINI_API_KEY manquante côté serveur." });
     }
 
     try {
-      const payload = await callOpenAi([
-        { role: "system", content: "Tu produis strictement du JSON valide conforme à la demande." },
-        { role: "user", content: buildPrompt(description, stylePrompt) }
-      ]);
-      const rawContent = payload?.choices?.[0]?.message?.content;
+      const payload = await callGemini(
+        `Tu produis strictement du JSON valide conforme à la demande.\n\n${buildPrompt(description, stylePrompt)}`
+      );
+      const rawContent = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawContent) return sendJson(res, 502, { error: "Réponse IA vide." });
 
       const template = JSON.parse(cleanJson(rawContent));
@@ -185,7 +163,7 @@ async function handleGenerate(req, res) {
       return sendJson(res, 200, { template });
     } catch (error) {
       if (error instanceof Error && error.message) {
-        const mappedError = mapOpenAiError(error);
+        const mappedError = mapGeminiError(error);
         return sendJson(res, mappedError.status, {
           error: mappedError.error,
           details: mappedError.details
